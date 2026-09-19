@@ -80,6 +80,107 @@ def test_catalog_deduplicates_inputs_orders_newest_and_ignores_other_files(state
     assert [scan["filename"] for scan in scans] == ["new.sqlite3", "scan.sqlite3"]
 
 
+@pytest.mark.parametrize("suffix", [".sqlite", ".sqlite3", ".db"])
+def test_catalog_combines_legacy_and_nested_sessions_without_duplicates(state, suffix):
+    folder = state.path.parent / "nested-session"
+    folder.mkdir(mode=0o700)
+    path = folder / ("nested" + suffix)
+    nested = ScanState.create(path, {}, "2.0.0")
+    try:
+        nested.connection.execute("UPDATE runs SET created_at='9999-01-01'")
+        nested_id = nested.run_id
+    finally:
+        nested.close()
+    (folder / "report.json").write_text("{}", encoding="utf-8")
+    discovered = ViewerStore([state.path.parent]).scans()
+    assert discovered["warnings"] == []
+    assert [scan["run_id"] for scan in discovered["scans"]] == [nested_id, state.run_id]
+    store = ViewerStore([state.path.parent, folder, state.path.parent], [path, state.path, path])
+    result = store.scans()
+    assert result["warnings"] == []
+    assert [scan["run_id"] for scan in result["scans"]] == [nested_id, state.run_id]
+    assert [scan["filename"] for scan in result["scans"]] == [path.name, state.path.name]
+
+
+def test_catalog_does_not_descend_beyond_session_folder_but_explicit_file_is_allowed(state):
+    folder = state.path.parent / "nested-session"
+    folder.mkdir(mode=0o700)
+    deeper = folder / "not-a-session-root"
+    deeper.mkdir(mode=0o700)
+    path = deeper / "deep.sqlite3"
+    deep = ScanState.create(path, {}, "2.0.0")
+    deep_id = deep.run_id
+    deep.close()
+
+    result = ViewerStore([state.path.parent]).scans()
+    assert result["warnings"] == []
+    assert [scan["run_id"] for scan in result["scans"]] == [state.run_id]
+    explicit = ViewerStore([state.path.parent], [path]).scans()
+    assert explicit["warnings"] == []
+    assert {scan["run_id"] for scan in explicit["scans"]} == {state.run_id, deep_id}
+
+
+def test_catalog_ignores_symlink_session_directories(tmp_path):
+    root = tmp_path / "scans"
+    root.mkdir(mode=0o700)
+    outside = tmp_path / "outside"
+    outside.mkdir(mode=0o700)
+    manifest = ScanState.create(outside / "private.sqlite3", {}, "2.0.0")
+    manifest.close()
+    (root / "linked-session").symlink_to(outside, target_is_directory=True)
+    (root / "broken-session").symlink_to(tmp_path / "absent", target_is_directory=True)
+
+    assert ViewerStore([root]).scans() == {"scans": [], "warnings": []}
+
+
+def test_catalog_limit_is_shared_by_flat_and_nested_sessions(state, monkeypatch):
+    folder = state.path.parent / "nested-session"
+    folder.mkdir(mode=0o700)
+    nested = ScanState.create(folder / "nested.sqlite3", {}, "2.0.0")
+    nested.close()
+    monkeypatch.setattr(web_data, "_MAX_SCANS", 1)
+
+    result = ViewerStore([state.path.parent]).scans()
+    assert len(result["scans"]) == 1
+    assert any("Scan discovery limit reached" in warning for warning in result["warnings"])
+
+
+def test_nested_review_marks_survive_viewer_restart_without_changing_scan(tmp_path):
+    root = tmp_path / "scans"
+    folder = root / "nested-session"
+    folder.mkdir(mode=0o700, parents=True)
+    path = folder / "nested.sqlite3"
+    manifest = ScanState.create(path, {}, "2.0.0")
+    try:
+        add_object(manifest, "notes.txt", findings=[finding("first"), finding("second")])
+    finally:
+        manifest.close()
+    original_bytes = path.read_bytes()
+
+    store = ViewerStore([root])
+    scan_id = store.scans()["scans"][0]["id"]
+    finding_id = store.findings(scan_id)["items"][0]["findings"][0]["finding_id"]
+    assert store.set_finding_review(scan_id, finding_id, True) == {
+        "finding_id": finding_id, "reviewed": True,
+    }
+    sidecar = web_data.review_path(path)
+    assert sidecar.parent == folder
+    assert sidecar.is_file()
+
+    restarted = ViewerStore([root])
+    catalog = restarted.scans()
+    assert catalog["warnings"] == []
+    assert [scan["id"] for scan in catalog["scans"]] == [scan_id]
+    reviewed = restarted.findings(scan_id, review_status="reviewed")["items"][0]["findings"]
+    assert [(hit["finding_id"], hit["reviewed"]) for hit in reviewed] == [(finding_id, True)]
+    remaining = restarted.findings(scan_id, review_status="unreviewed")["items"][0]["findings"]
+    assert len(remaining) == 1
+    assert remaining[0]["finding_id"] != finding_id
+    assert remaining[0]["reviewed"] is False
+    assert restarted.summary(scan_id)["findings"] == 2
+    assert path.read_bytes() == original_bytes
+
+
 def test_catalog_missing_directory_does_not_create_it(tmp_path):
     missing = tmp_path / "does-not-exist"
     assert ViewerStore([missing]).scans() == {"scans": [], "warnings": []}

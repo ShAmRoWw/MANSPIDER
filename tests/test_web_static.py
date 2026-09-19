@@ -203,9 +203,21 @@ def test_manual_review_is_explicit_reversible_and_preserves_filter_context():
     assert mutation.index('await api(') < mutation.index('updateReviewCopies(findingId, reviewed, true)')
     assert 'pendingReviews.add(key)' in mutation and 'pendingReviews.delete(key)' in mutation
     assert 'reviewSavedFiltered' in mutation and 'reviewSaved' in mutation
+    assert 'if (state.view === "findings" && state.filters.review_status) await loadResults({ preserveOpen: true })' in mutation
+    assert mutation.index('updateReviewCopies(findingId, reviewed, true)') < mutation.index('await loadResults(')
     assert 'restartResults(' not in mutation
     assert 'localStorage' not in mutation
     assert 'reviewed-finding' in (STATIC / "style.css").read_text()
+
+
+def test_review_refresh_preserves_expanded_cards_without_reusing_file_cursors():
+    script = (STATIC / "app.js").read_text()
+    rendering = script.split('function renderFindings(', 1)[1].split('function renderObjects(', 1)[0]
+    assert 'details.file-result[open]' in rendering
+    assert 'details.dataset.objectId = text(item.object_id)' in rendering
+    assert 'details.open = openObjects.has(details.dataset.objectId)' in rendering
+    assert 'renderFindings(items, filters.review_status || "", preserveOpen)' in script
+    assert 'Refresh results to update this filtered list' not in script
 
 
 def translations():

@@ -1,4 +1,4 @@
-# MANSPIDER — ShAmRoWw fork
+# MANSPIDER - ShAmRoWw fork
 
 A Linux-focused fork of [MANSPIDER](https://github.com/blacklanternsecurity/MANSPIDER),
 maintained by [ShAmRoWw](https://github.com/ShAmRoWw/MANSPIDER).
@@ -119,10 +119,17 @@ default. See `manspider --help` for filters, authentication methods, and overrid
 
 ## Sessions and resume
 
-Sessions are created automatically in `~/.local/state/manspider/scans`, respecting
-`XDG_STATE_HOME`. Set `MANSPIDER_STATE_DIR` to choose another local directory.
-Each invocation has its own text log beside the SQLite session. SMB metrics and
-the coverage-gap report are stored there too; add `--json` for a findings export.
+Each new automatic scan gets its own timestamped, uniquely named folder under
+`~/.local/state/manspider/scans`, respecting `XDG_STATE_HOME`. For example,
+`scans/manspider_20260919_143000_a1b2c3d4/` contains that scan's SQLite database,
+per-invocation text logs, SMB metrics, coverage-gap report, optional JSON export
+(`--json`), and review marks once created. Resume keeps using the same folder.
+Set `MANSPIDER_STATE_DIR` to choose another parent directory.
+
+Existing sessions stored directly in `scans/` remain discoverable and are not
+moved. The scanner and web viewer search the configured directory and one level
+of session subdirectories, without following symlinks. Explicit `--state-file`
+and `--resume` paths are used as given; `--json-file` can place an export elsewhere.
 
 Later interactive launches offer eligible unfinished sessions, newest first.
 You can also resume explicitly by repeating the original scope and search
@@ -155,8 +162,9 @@ current main-scan invocation and an approximate remaining time. Timing snapshots
 refresh during scanning; estimates may change as more directories are discovered.
 Resume starts a new elapsed-time counter, excluding downtime and earlier attempts.
 
-Review marks are stored separately
-and do not delete findings.
+Review marks are stored separately and do not delete findings. With “Only
+unreviewed” selected, marking a finding reviewed removes it from the list
+automatically after saving; “All findings” continues to show it.
 
 ## Operational safety
 

@@ -8,6 +8,8 @@ import sqlite3
 import subprocess
 import sys
 
+import pytest
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SECRET_PATTERN = r"SESSION_SECRET=[A-Za-z0-9!]+"
 
@@ -121,10 +123,13 @@ def test_consecutive_automatic_scans_keep_distinct_logs_beside_each_session(tmp_
     log_snapshots = {}
     for scope, source, secret, before in fixtures:
         stdout, _stderr = _scan(scope, environment)
-        states = set(scans.glob("*.sqlite3"))
+        states = set(scans.glob("*/*.sqlite3"))
         created = states - previous_states
         assert len(created) == 1
         state_path = created.pop()
+        assert state_path.parent.parent == scans
+        assert state_path.parent.name == state_path.stem
+        assert not list(scans.glob("*.sqlite3"))
         log_files = _logs(state_path)
         assert len(log_files) == 1
         log_path = log_files.pop()
@@ -139,6 +144,7 @@ def test_consecutive_automatic_scans_keep_distinct_logs_beside_each_session(tmp_
         assert _source_identity(source) == before
 
     assert len(log_snapshots) == 2
+    assert len({path.parent for path in log_snapshots}) == 2
     for (_scope, _source, secret, _before), content in zip(
         fixtures, (path.read_text(encoding="utf-8") for path in log_snapshots), strict=True
     ):
@@ -181,12 +187,19 @@ def test_parallel_independent_scans_do_not_mix_text_logs(tmp_path):
     assert not (Path(environment["HOME"]) / ".manspider" / "logs").exists()
 
 
-def test_each_resume_creates_a_new_log_without_touching_previous_logs(tmp_path):
+@pytest.mark.parametrize("automatic", [False, True])
+def test_each_resume_creates_a_new_log_without_touching_previous_logs(tmp_path, automatic):
     resume_count = 2
     environment = _environment(tmp_path)
     scope, source, secret, before = _fixture(tmp_path, "ResumeCorpus")
-    state_path = tmp_path / "sessions" / "resumable.sqlite3"
-    stdout, _stderr = _scan(scope, environment, "--state-file", state_path)
+    scans = Path(environment["HOME"]) / ".local" / "state" / "manspider" / "scans"
+    if automatic:
+        stdout, _stderr = _scan(scope, environment)
+        state_path, = scans.glob("*/*.sqlite3")
+        assert state_path.parent.name == state_path.stem
+    else:
+        state_path = tmp_path / "sessions" / "resumable.sqlite3"
+        stdout, _stderr = _scan(scope, environment, "--state-file", state_path)
     first_logs = _logs(state_path)
     assert len(first_logs) == 1
     initial_path = first_logs.pop()
@@ -210,4 +223,7 @@ def test_each_resume_creates_a_new_log_without_touching_previous_logs(tmp_path):
         snapshots[new_path] = _source_identity(new_path)
 
     assert len(_logs(state_path)) == resume_count + 1
+    if automatic:
+        assert set(scans.iterdir()) == {state_path.parent}
+        assert set(scans.glob("*/*.sqlite3")) == {state_path}
     assert _source_identity(source) == before

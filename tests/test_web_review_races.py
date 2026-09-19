@@ -46,6 +46,17 @@ def _select_scan(viewer, scan_id, path):
     viewer.expect(viewer.page.locator("#results .file-path").first).to_contain_text(path)
 
 
+def _apply_review_filter(viewer, status):
+    viewer.page.locator('#filters [name="review_status"]').select_option(status)
+    with viewer.page.expect_response(_is_result_page):
+        viewer.page.locator('#filters button[type="submit"]').click()
+    viewer.expect(viewer.page.locator("#refresh-results")).to_be_enabled()
+
+
+def _is_result_page(response):
+    return "/findings?" in response.url and "/objects/" not in response.url
+
+
 def test_delayed_old_generation_patch_cannot_reapply_a_reverted_mark(live_viewer):
     viewer = live_viewer
     # Deliberately reuse an ID across TWO distinct local fixture databases.
@@ -186,18 +197,14 @@ def test_full_finding_pages_sync_preview_marks_and_keep_applied_review_filter(li
     copies = card.locator(f'article[data-finding-id="{finding_id}"]')
     viewer.expect(copies).to_have_count(2)
     full = card.locator(f'article[data-finding-id="{finding_id}"]:visible')
-    full.locator(".review-toggle").click()
-    viewer.expect(copies.nth(0)).to_have_attribute("data-reviewed", "true")
-    viewer.expect(copies.nth(1)).to_have_attribute("data-reviewed", "true")
-    card.get_by_role("button", name="Collapse full set", exact=True).click()
-    viewer.expect(preview).to_be_visible()
-    viewer.expect(preview.locator(".review-toggle")).to_have_text("Mark unreviewed")
-
-    with viewer.page.expect_response(lambda response: "/findings?" in response.url):
-        viewer.page.locator("#refresh-results").click()
+    with viewer.page.expect_response(_is_result_page):
+        full.locator(".review-toggle").click()
     viewer.expect(viewer.page.locator("#refresh-results")).to_be_enabled()
-    card, _ = _open_first(viewer)
     viewer.expect(card.locator(f'article[data-finding-id="{finding_id}"]')).to_have_count(0)
+    # The current file remains expanded, but its full-set page is rebuilt from
+    # the current filtered preview instead of retaining stale match copies.
+    assert card.get_attribute("open") is not None
+    viewer.expect(card.locator("article.finding").first).to_be_visible()
     card.get_by_role("button", name="All file matches — 50 per page", exact=True).click()
     viewer.expect(card.locator("article.finding:visible")).to_have_count(50)
     # Editing the form is not applying it. Paging uses the filter captured when
@@ -209,4 +216,165 @@ def test_full_finding_pages_sync_preview_marks_and_keep_applied_review_filter(li
     assert all(parse_qs(urlsplit(url).query).get("review_status") == ["unreviewed"] for url in detail_requests)
     assert parse_qs(urlsplit(detail_requests[-1]).query)["after"] != ["0"]
     viewer.expect(card.locator(f'article[data-finding-id="{finding_id}"]')).to_have_count(0)
+    viewer.expect(viewer.page.locator("#error")).to_be_hidden()
+
+
+@pytest.mark.parametrize("status", ["", "unreviewed", "reviewed"])
+def test_only_applied_review_filter_hides_a_confirmed_change(live_viewer, status):
+    viewer = live_viewer
+    viewer.create_scan("applied-review", files=2)
+    viewer.open_ready()
+    if status == "reviewed":
+        for card in viewer.page.locator("#results .file-result").all():
+            card.locator("summary").first.click()
+            article = card.locator("article.finding").first
+            article.locator(".review-toggle").click()
+            viewer.expect(article).to_have_attribute("data-reviewed", "true")
+    _apply_review_filter(viewer, status)
+    _, article = _open_first(viewer)
+    finding_id = article.get_attribute("data-finding-id")
+    finding = viewer.page.locator(f'#results article[data-finding-id="{finding_id}"]')
+    requests = []
+    viewer.page.on("request", lambda request: requests.append(request.url) if _is_result_page(request) else None)
+    # Unsubmitted controls must neither enable hiding in All mode nor change
+    # which saved review filter is used by the automatic reload.
+    unsaved = "unreviewed" if status == "reviewed" else "reviewed"
+    viewer.page.locator('#filters [name="review_status"]').select_option(unsaved)
+    if status:
+        with viewer.page.expect_response(_is_result_page):
+            article.locator(".review-toggle").click()
+        viewer.expect(finding).to_have_count(0)
+        viewer.expect(viewer.page.locator("#results .file-result")).to_have_count(1)
+        assert len(requests) == 1
+        assert parse_qs(urlsplit(requests[0]).query)["review_status"] == [status]
+    else:
+        article.locator(".review-toggle").click()
+        viewer.expect(finding).to_have_attribute("data-reviewed", "true")
+        viewer.expect(finding.locator(".review-toggle")).to_be_enabled()
+        viewer.expect(viewer.page.locator("#results .file-result")).to_have_count(2)
+        assert requests == []
+    assert viewer.page.locator('#filters [name="review_status"]').input_value() == unsaved
+    viewer.expect(viewer.page.locator("#error")).to_be_hidden()
+
+
+@pytest.mark.parametrize("succeeds", [False, True])
+def test_filtered_finding_stays_until_patch_is_successfully_confirmed(live_viewer, succeeds):
+    viewer = live_viewer
+    viewer.create_scan("pending-review")
+    viewer.open_ready()
+    _apply_review_filter(viewer, "unreviewed")
+    _, article = _open_first(viewer)
+    finding_id = article.get_attribute("data-finding-id")
+    finding = viewer.page.locator(f'#results article[data-finding-id="{finding_id}"]')
+    held, requests = [], []
+    pattern = viewer.origin + "/api/scans/*/findings/*/review"
+
+    def hold_patch(route):
+        held.append(route)
+
+    viewer.page.route(pattern, hold_patch)
+    viewer.page.on("request", lambda request: requests.append(request.url) if _is_result_page(request) else None)
+    article.locator(".review-toggle").click()
+    _wait_held(viewer, held)
+    viewer.expect(finding).to_be_visible()
+    viewer.expect(finding).to_have_attribute("data-reviewed", "false")
+    viewer.expect(finding.locator(".review-toggle")).to_be_disabled()
+    viewer.expect(viewer.page.locator("#results .file-result")).to_have_count(1)
+    assert requests == []
+    route = held.pop()
+    if succeeds:
+        with viewer.page.expect_response(_is_result_page):
+            route.continue_()
+        viewer.expect(finding).to_have_count(0)
+        viewer.expect(viewer.page.locator("#results .file-result")).to_have_count(0)
+        assert len(requests) == 1
+        viewer.expect(viewer.page.locator("#error")).to_be_hidden()
+    else:
+        route.fulfill(status=503, json={"detail": "Synthetic review save failure"})
+        viewer.expect(viewer.page.locator("#error")).to_be_visible()
+        viewer.expect(finding).to_have_attribute("data-reviewed", "false")
+        viewer.expect(finding.locator(".review-toggle")).to_be_enabled()
+        viewer.expect(viewer.page.locator("#results .file-result")).to_have_count(1)
+        assert requests == []
+    viewer.page.unroute(pattern, hold_patch)
+
+
+def test_failed_automatic_list_reload_retains_confirmed_mark_and_can_retry(live_viewer):
+    viewer = live_viewer
+    viewer.create_scan("failed-auto-list")
+    viewer.open_ready()
+    _apply_review_filter(viewer, "unreviewed")
+    card, article = _open_first(viewer)
+    pattern = viewer.origin + "/api/scans/*/findings?*"
+
+    def fail_list(route):
+        route.fulfill(status=503, json={"detail": "Synthetic automatic list failure"})
+
+    viewer.page.route(pattern, fail_list)
+    with viewer.page.expect_response(lambda response: _is_result_page(response) and response.status == 503):
+        article.locator(".review-toggle").click()
+    viewer.expect(viewer.page.locator("#error")).to_be_visible()
+    viewer.expect(article).to_have_attribute("data-reviewed", "true")
+    viewer.expect(article.locator(".review-toggle")).to_be_enabled()
+    viewer.expect(viewer.page.locator("#review-notice")).to_be_visible()
+    viewer.expect(viewer.page.locator("#results .file-result")).to_have_count(1)
+    assert card.get_attribute("open") is not None
+    viewer.page.unroute(pattern, fail_list)
+    with viewer.page.expect_response(_is_result_page):
+        viewer.page.locator("#refresh-results").click()
+    viewer.expect(viewer.page.locator("#results .file-result")).to_have_count(0)
+    viewer.expect(viewer.page.locator("#error")).to_be_hidden()
+
+
+def test_delayed_filtered_list_cannot_restore_an_automatically_removed_finding(live_viewer):
+    viewer = live_viewer
+    viewer.create_scan("old-filtered-list")
+    viewer.open_ready()
+    _apply_review_filter(viewer, "unreviewed")
+    _, article = _open_first(viewer)
+    held = []
+    pattern = viewer.origin + "/api/scans/*/findings?*"
+
+    def hold_first_list(route):
+        if not held:
+            held.append((route, route.fetch()))
+        else:
+            route.continue_()
+
+    viewer.page.route(pattern, hold_first_list)
+    viewer.page.locator("#refresh-results").click()
+    _wait_held(viewer, held)
+    with viewer.page.expect_response(_is_result_page):
+        article.locator(".review-toggle").click()
+    viewer.expect(viewer.page.locator("#results .file-result")).to_have_count(0)
+    route, response = held.pop()
+    # The superseded fetch may already be aborted; its late successful body
+    # must never restore the old filtered page in either case.
+    route.fulfill(response=response)
+    viewer.page.wait_for_timeout(100)
+    viewer.expect(viewer.page.locator("#results .file-result")).to_have_count(0)
+    viewer.expect(viewer.page.locator("#refresh-results")).to_be_enabled()
+    viewer.expect(viewer.page.locator("#error")).to_be_hidden()
+    viewer.page.unroute(pattern, hold_first_list)
+
+
+def test_automatic_filter_reload_keeps_second_page_cursor_even_when_page_empties(live_viewer):
+    viewer = live_viewer
+    viewer.create_scan("second-review-page", files=102)
+    viewer.open_ready()
+    _apply_review_filter(viewer, "unreviewed")
+    with viewer.page.expect_response(_is_result_page) as second_page:
+        viewer.page.locator("#next-page").click()
+    cursor = parse_qs(urlsplit(second_page.value.url).query)["after"]
+    assert cursor != ["0"]
+    viewer.expect(viewer.page.locator("#results .file-result")).to_have_count(2)
+    for remaining in (1, 0):
+        _, article = _open_first(viewer)
+        with viewer.page.expect_response(_is_result_page) as refreshed:
+            article.locator(".review-toggle").click()
+        assert parse_qs(urlsplit(refreshed.value.url).query)["after"] == cursor
+        viewer.expect(viewer.page.locator("#results .file-result")).to_have_count(remaining)
+        viewer.expect(viewer.page.locator("#page-number")).to_have_text("Page 2")
+        viewer.expect(viewer.page.locator("#previous-page")).to_be_enabled()
+    viewer.expect(viewer.page.locator("#next-page")).to_be_disabled()
     viewer.expect(viewer.page.locator("#error")).to_be_hidden()

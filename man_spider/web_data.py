@@ -13,14 +13,14 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import math
-import os
 from pathlib import Path
 import sqlite3
 import threading
 import time
 
-from man_spider.path_safety import UnsafeWritePath, local_directory_descriptor
+from man_spider.path_safety import UnsafeWritePath
 from man_spider.evidence_storage import configure_evidence_reader, context_join, context_sql
+from man_spider.session_paths import iter_scan_state_paths
 from man_spider.state import StateError, _connect_local_sqlite
 from man_spider.web_review import ReviewError, attach_reviews, review_expression, review_path, review_predicate, set_review
 from man_spider.web_text import EvidenceReadError, EvidenceTextReader
@@ -297,23 +297,14 @@ class ViewerStore:
                 seen.add(path)
                 yield path
         for directory in self.directories:
-            try:
-                with local_directory_descriptor(directory, purpose="viewer scan directory", create=False) as (fd, _):
-                    with os.scandir(fd) as entries:
-                        for entry in entries:
-                            if time.monotonic() >= deadline:
-                                warnings.append("Scan directory discovery time limit reached")
-                                return
-                            if Path(entry.name).suffix not in {".sqlite", ".sqlite3", ".db"}:
-                                continue
-                            path = directory / entry.name
-                            if path not in seen:
-                                seen.add(path)
-                                yield path
-            except FileNotFoundError:
-                continue
-            except (UnsafeWritePath, OSError):
-                warnings.append(f"Cannot read local scan directory: {directory.name}")
+            for path in iter_scan_state_paths(
+                directory, suffixes={".sqlite", ".sqlite3", ".db"}, warnings=warnings, deadline=deadline,
+            ):
+                if path not in seen:
+                    seen.add(path)
+                    yield path
+            if time.monotonic() >= deadline:
+                return
 
     def scans(self):
         with self._lock:

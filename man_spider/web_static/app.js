@@ -170,8 +170,8 @@
       "Отметка проверки сохранена локально. Чтобы скрыть проверенные находки, выберите «Только непроверенные» и примените фильтры. Находки не удаляются."
     ],
     "reviewSavedFiltered": [
-      "Review mark saved locally. Refresh results to update this filtered list; open evidence stays in place until then. No findings are deleted.",
-      "Отметка проверки сохранена локально. Обновите результаты, чтобы обновить отфильтрованный список; до этого открытые находки остаются на месте. Находки не удаляются."
+      "Review mark saved locally. Updating the filtered list automatically. No findings are deleted.",
+      "Отметка проверки сохранена локально. Отфильтрованный список обновляется автоматически. Находки не удаляются."
     ],
     "any": [
       "Any",
@@ -1363,7 +1363,7 @@
     byId("refresh-results").disabled = state.listBusy;
   }
 
-  async function loadResults() {
+  async function loadResults({ preserveOpen = false } = {}) {
     if (!state.scanId) return;
     if (listController) listController.abort();
     const controller = new AbortController(); listController = controller;
@@ -1387,7 +1387,7 @@
         return false;
       }
       const items = Array.isArray(data.items) ? data.items : [];
-      if (view === "findings") renderFindings(items, filters.review_status || "");
+      if (view === "findings") renderFindings(items, filters.review_status || "", preserveOpen);
       else renderObjects(items);
       state.nextAfter = data.next_after == null ? null : data.next_after;
       state.renderedRevision = revision;
@@ -1543,6 +1543,11 @@
         byId("review-notice").hidden = false;
         byId("new-results").hidden = false;
         showError("", article);
+        // Re-query the current page only after the mark is durable. The server
+        // decides whether a file still matches all applied filters; a truncated
+        // preview cannot answer that. Never apply unsaved form edits or reset
+        // pagination. Ordinary live scan updates still require explicit refresh.
+        if (state.view === "findings" && state.filters.review_status) await loadResults({ preserveOpen: true });
       } catch (error) {
         if (context.generation === state.generation && context.scanId === state.scanId && article.isConnected) showError(error, article);
       } finally {
@@ -1654,13 +1659,19 @@
     restart.addEventListener("click", () => { if (!busy) loadPage([0], true); });
   }
 
-  function renderFindings(items, reviewStatus = "") {
+  function renderFindings(items, reviewStatus = "", preserveOpen = false) {
     const context = { scanId: state.scanId, generation: state.generation, reviewStatus };
+    // Read expansion state at render time, so opening/closing a card while the
+    // refresh was in flight is respected. File-page cursors are not reused:
+    // changing review membership invalidates their result-set version.
+    const openObjects = new Set(preserveOpen ? Array.from(byId("results").querySelectorAll("details.file-result[open]"), (card) => card.dataset.objectId) : []);
     const fragment = document.createDocumentFragment();
     if (!items.length) fragment.append(node("p", msg("noFindings"), "empty"));
     for (const item of items) {
       const findings = Array.isArray(item.findings) ? item.findings : [];
       const details = node("details", null, "file-result");
+      details.dataset.objectId = text(item.object_id);
+      details.open = openObjects.has(details.dataset.objectId);
       const summary = node("summary");
       summary.append(node("span", fullPath(item), "file-path"));
       const strongest = item.max_severity || findings.reduce((best, finding) => (severityOrder[finding.severity] || 0) > (severityOrder[best] || 0) ? finding.severity : best, "info");

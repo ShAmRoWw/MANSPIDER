@@ -29,6 +29,7 @@ from man_spider.path_safety import (
     require_local_write_path,
 )
 from man_spider.rules import build_rule_representation_plan
+from man_spider.session_paths import iter_scan_state_paths
 
 if os.name == "posix":
     import fcntl
@@ -592,8 +593,11 @@ def resume_search_directories(environ: Mapping[str, str] | None = None) -> tuple
 
 
 def default_state_path(state_directory: str | Path) -> Path:
+    """Keep each new automatic session and its sidecars in their own folder."""
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return Path(state_directory) / f"manspider_{timestamp}_{uuid.uuid4().hex[:8]}.sqlite3"
+    name = f"manspider_{timestamp}_{uuid.uuid4().hex[:8]}"
+    return Path(state_directory) / name / f"{name}.sqlite3"
 
 
 def _target_display(value) -> str:
@@ -614,14 +618,7 @@ def discover_resumable_scans(directories: Sequence[str | Path]) -> list[Resumabl
     candidates = []
     seen = set()
     for directory_value in directories:
-        directory = Path(directory_value).expanduser()
-        if not directory.is_dir():
-            continue
-        try:
-            directory = require_local_path(directory, purpose="resume discovery directory")
-        except UnsafeWritePath:
-            continue
-        for path in directory.glob("*.sqlite3"):
+        for path in iter_scan_state_paths(directory_value):
             try:
                 resolved = require_local_path(path, purpose="resume state candidate").resolve(strict=True)
             except (OSError, UnsafeWritePath):

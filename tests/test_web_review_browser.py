@@ -65,8 +65,8 @@ def test_review_persists_filters_and_can_be_undone_without_changing_scan(live_vi
     viewer.page.locator("#theme-select").select_option("dark")
     viewer.expect(marked.locator(".review-toggle")).to_be_visible()
     marked.locator(".review-toggle").click()
-    viewer.expect(marked).to_have_attribute("data-reviewed", "false")
-    viewer.page.locator("#refresh-results").click()
+    # The active reviewed-only filter is refreshed after a confirmed save.
+    # No manual Refresh is needed, even after changing language and theme.
     viewer.expect(viewer.page.locator(".file-result")).to_have_count(0)
     viewer.page.locator("#show-all").click()
     viewer.expect(viewer.page.locator(".file-result")).to_have_count(2)
@@ -105,3 +105,26 @@ def test_failed_save_is_visible_and_new_live_findings_remain_unreviewed(live_vie
     viewer.expect(viewer.page.locator(".file-result")).to_contain_text("new-live-file.txt")
     article = _open_first(viewer)
     viewer.expect(article).to_have_attribute("data-reviewed", "false")
+
+
+def test_automatic_session_folder_is_visible_and_preserves_review_marks(live_viewer):
+    from man_spider.state import default_state_path
+
+    viewer = live_viewer
+    path = default_state_path(viewer.directory)
+    state = viewer.create_scan(str(path.relative_to(viewer.directory).with_suffix("")))
+    assert state.path == path
+    viewer.open_ready()
+    article = _open_first(viewer)
+    finding_id = article.get_attribute("data-finding-id")
+    article.locator(".review-toggle").click()
+    viewer.expect(article).to_have_attribute("data-reviewed", "true")
+    assert path.with_name(path.name + ".review").is_file()
+
+    viewer.page.reload()
+    viewer.expect(viewer.page.locator(".file-result")).to_have_count(1)
+    restored = _open_first(viewer)
+    assert restored.get_attribute("data-finding-id") == finding_id
+    viewer.expect(restored).to_have_attribute("data-reviewed", "true")
+    _filter(viewer, "unreviewed")
+    viewer.expect(viewer.page.locator(".file-result")).to_have_count(0)
