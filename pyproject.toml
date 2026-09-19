@@ -1,0 +1,110 @@
+[project]
+name = "man-spider"
+version = "2.0.0"
+description = "Full-featured SMB spider capable of searching file content"
+authors = [
+    {name = "TheTechromancer"},
+    {name = "ShAmRoWw"},
+]
+license = {text = "GPL-3.0"}
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    # Extractor temporary-file behavior is safety-critical. Keep this exact
+    # until a newer release passes the local-only/temp-mutation suite.
+    "kreuzberg==4.10.2",
+    # SMB request semantics are safety-critical.  Do not accept dependency
+    # drift without re-running the wire/read-only compatibility suite.
+    "impacket==0.13.1",
+    "charset-normalizer",
+    "cryptography>=45",
+]
+
+[project.urls]
+Repository = "https://github.com/ShAmRoWw/MANSPIDER"
+Homepage = "https://github.com/ShAmRoWw/MANSPIDER"
+
+[project.scripts]
+manspider = "man_spider.manspider:cli"
+manspider-web = "man_spider.web:main"
+
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
+]
+
+[tool.ruff]
+line-length = 119
+exclude = ["kreuzberg", "uv", ".venv"]
+lint.select = ["E", "F"]
+lint.ignore = ["E402", "E711", "E712", "E713", "E721", "E722", "E741", "F403", "F405", "F841", "E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Build artifacts must not depend on what happens to be present in a local
+# checkout or on whether its .git directory is available.
+[tool.hatch.build]
+exclude = [
+    "**/__pycache__",
+    "**/*.py[cod]",
+    "**/.pytest_cache",
+    "**/.ruff_cache",
+    "**/.venv",
+    "**/.manspider",
+    "**/.manspider-container-home",
+    "**/logs",
+    "**/loot",
+    "**/benchmark-artifacts",
+    "**/benchmark-corpus",
+    "**/stand.txt",
+    "**/.env",
+    "**/.env.*",
+    "**/*.ccache",
+    "**/*.keytab",
+    "**/*.sqlite",
+    "**/*.sqlite3",
+    "**/*.sqlite-*",
+    "**/*.sqlite.*",
+    "**/*.sqlite3-*",
+    "**/*.sqlite3.*",
+    "**/*.db",
+    "**/*.db-*",
+    "**/*.review",
+    "**/*.review-*",
+    "**/*.review.*",
+    "**/*.log",
+    "**/*.smb-metrics.json",
+    "**/*.unclassified-files.jsonl",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["man_spider"]
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+    ".gitignore",
+    ".dockerignore",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
+    "uv.lock",
+    "install.sh",
+    "manspider.sh",
+    "Dockerfile",
+    "CHANGES_FROM_ORIGINAL_MANSPIDER_EN.md",
+    "man_spider",
+    "tests",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "ruff>=0.15.0",
+    "httpx>=0.28,<1",
+]

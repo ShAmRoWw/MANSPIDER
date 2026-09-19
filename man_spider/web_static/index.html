@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>MANSPIDER — scan results</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <div><p class="eyebrow" data-i18n="appSubtitle">Local results workspace</p><h1>MANSPIDER</h1></div>
+    <p class="privacy-note" data-i18n="privacyNote">Local results; no connections to scanned servers. No authentication: local users and processes have access.</p>
+    <div class="preferences" aria-label="Display preferences" data-i18n-aria-label="preferences">
+      <label><span data-i18n="language">Language</span><select id="language-select" aria-label="Language" data-i18n-aria-label="language"><option value="ru" lang="ru">Русский</option><option value="en" lang="en">English</option></select></label>
+      <label><span data-i18n="theme">Appearance</span><select id="theme-select" aria-label="Appearance" data-i18n-aria-label="theme"><option value="system" data-i18n="themeSystem">System</option><option value="light" data-i18n="themeLight">Light</option><option value="dark" data-i18n="themeDark">Dark</option></select></label>
+    </div>
+  </header>
+  <main>
+    <noscript><p class="notice">JavaScript is required. All interface resources are local. / Для просмотра включите JavaScript. Все ресурсы интерфейса находятся локально.</p></noscript>
+    <div id="error" class="notice error" role="alert" hidden></div>
+    <div id="workspace">
+        <section class="panel scan-selection" aria-label="Select a scan" data-i18n-aria-label="selectScan">
+          <label class="grow"><span data-i18n="scan">Scan</span><select id="scan-select" aria-label="Scan" data-i18n-aria-label="scan"></select></label>
+          <button id="reload-scans" type="button" class="secondary" data-i18n="reloadScans">Refresh list</button>
+          <span id="connection-state" class="muted" role="status" data-i18n="loading">Loading…</span>
+        </section>
+        <div id="scan-warnings" class="notice" hidden></div>
+        <section id="scan-overview" class="panel" hidden aria-labelledby="scan-title">
+          <div class="section-heading"><h2 id="scan-title" data-i18n="scan">Scan</h2><span id="scan-status" class="status"></span></div>
+          <dl id="scan-details" class="scan-details"></dl>
+          <div id="metrics" class="metrics"></div>
+          <section id="scan-timing" class="scan-timing" aria-labelledby="scan-timing-title">
+            <h3 id="scan-timing-title" data-i18n="scanTiming">Scan timing</h3>
+            <dl class="scan-timing-values">
+              <div><dt data-i18n="currentRunElapsed">Current run elapsed</dt><dd id="scan-elapsed" data-i18n="timingUnavailable">Not available</dd></div>
+              <div><dt data-i18n="approximateRemaining">Approximate time remaining</dt><dd id="scan-remaining" data-i18n="timingUnavailable">Not available</dd></div>
+            </dl>
+            <p id="scan-timing-estimate" class="muted compact" hidden></p>
+            <p id="scan-timing-updated" class="muted compact" hidden></p>
+            <p class="muted compact" data-i18n="timingCaveat">Main scan since its latest start or resume; preparation, approvals and downtime excluded. Snapshot values; estimates may change as files are discovered.</p>
+          </section>
+          <div class="analysis-heading"><h3 data-i18n="contentCoverage">Content analysis</h3><span class="muted compact" data-i18n="recordedFiles">Enumerated files only</span></div>
+          <div id="analysis-metrics" class="analysis-metrics"></div>
+          <p id="analysis-note" class="muted compact" data-i18n="analysisCaveat">Analysis is relative to the active rules and limits, not proof that every byte or embedded object was checked. Files inside inaccessible directories cannot be counted.</p>
+          <p id="analysis-legacy-note" class="notice compact" hidden data-i18n="analysisLegacy">This session has no recorded content-analysis counters. Processed files are not assumed to have had their content analyzed.</p>
+        </section>
+        <section id="results-panel" class="panel" hidden>
+          <nav class="tabs" aria-label="Results section" data-i18n-aria-label="resultsSection"><button id="tab-findings" type="button" class="tab active" aria-pressed="true" data-i18n="findings">Findings</button><button id="tab-coverage" type="button" class="tab" aria-pressed="false" data-i18n="coverage">Coverage &amp; issues</button></nav>
+          <div id="findings-controls">
+              <form id="filters" class="filters">
+                <label><span data-i18n="rule">Rule</span><input name="rule" placeholder="configuration-data-file" maxlength="256"></label>
+                <label><span data-i18n="severity">Severity</span><select name="severity"><option value="" data-i18n="any">Any</option><option value="critical" data-i18n="severity.critical">critical</option><option value="high" data-i18n="severity.high">high</option><option value="medium" data-i18n="severity.medium">medium</option><option value="low" data-i18n="severity.low">low</option><option value="info" data-i18n="severity.info">info</option></select></label>
+                <label><span data-i18n="confidence">Confidence</span><select name="confidence"><option value="" data-i18n="any">Any</option><option value="high" data-i18n="confidence.high">high</option><option value="medium" data-i18n="confidence.medium">medium</option><option value="low" data-i18n="confidence.low">low</option></select></label>
+                <label><span data-i18n="detectionMethod">Detection method</span><select name="representation"><option value="" data-i18n="any">Any</option><option value="metadata" data-i18n="representation.metadata">Metadata</option><option value="text" data-i18n="representation.text">Text</option><option value="strings" data-i18n="representation.strings">Extracted strings</option><option value="raw" data-i18n="representation.raw">Raw bytes</option><option value="ocr" data-i18n="representation.ocr">Recognized text</option><option value="structured" data-i18n="representation.structured">Structured data</option><option value="inspect:private-key-material" data-i18n="representation.inspect:private-key-material">Private-key material</option><option value="inspect:kubernetes-secret-json" data-i18n="representation.inspect:kubernetes-secret-json">Kubernetes secrets in JSON</option><option value="inspect:group-policy-preference-password" data-i18n="representation.inspect:group-policy-preference-password">Group Policy preference passwords</option><option value="inspect:active-directory-ldif-secrets" data-i18n="representation.inspect:active-directory-ldif-secrets">Active Directory secrets in LDIF</option><option value="inspect:active-directory-json-secrets" data-i18n="representation.inspect:active-directory-json-secrets">Active Directory secrets in JSON</option><option value="inspect:russian-json-credential-value" data-i18n="representation.inspect:russian-json-credential-value">Credentials under Russian JSON keys</option><option value="inspect:russian-legacy-credential-value" data-i18n="representation.inspect:russian-legacy-credential-value">Credentials in legacy Russian encodings</option><option value="unknown" data-i18n="representation.unknown">Not recorded in session</option></select></label>
+                <label><span data-i18n="host">Host</span><input name="target" placeholder="IP or hostname" data-i18n-placeholder="hostPlaceholder" maxlength="256"></label>
+                <label><span data-i18n="share">Share</span><input name="share" placeholder="Share name" data-i18n-placeholder="sharePlaceholder" maxlength="256"></label>
+                <label><span data-i18n="pathContains">Path contains</span><input name="path" placeholder="Part of a path" data-i18n-placeholder="pathPlaceholder" maxlength="512"></label>
+                <label><span data-i18n="extension">Extension</span><input name="extension" placeholder="txt" maxlength="64"></label>
+                <label><span data-i18n="category">Category</span><input name="category" placeholder="Rule category" data-i18n-placeholder="categoryPlaceholder" maxlength="256"></label>
+                <label><span data-i18n="analysisStatus">Content analysis</span><select name="analysis_status"><option value="" data-i18n="any">Any</option><option value="analyzed" data-i18n="analysis.analyzed">Analyzed</option><option value="partial" data-i18n="analysis.partial">Partial</option><option value="not_analyzed" data-i18n="analysis.not_analyzed">Not analyzed</option><option value="unknown" data-i18n="analysis.unknown">Unknown</option></select></label>
+                <label><span data-i18n="reviewStatus">Manual review</span><select name="review_status"><option value="" data-i18n="reviewAll">All findings</option><option value="unreviewed" data-i18n="reviewUnreviewed">Only unreviewed</option><option value="reviewed" data-i18n="reviewReviewed">Only reviewed</option></select></label>
+                <label><span data-i18n="sizeFrom">Minimum size, bytes</span><input name="min_size" placeholder="No limit" data-i18n-placeholder="noLimit" type="number" min="0" step="1"></label>
+                <label><span data-i18n="sizeTo">Maximum size, bytes</span><input name="max_size" placeholder="No limit" data-i18n-placeholder="noLimit" type="number" min="0" step="1"></label>
+                <label class="wide"><span data-i18n="valueContains">Value or context contains</span><input name="q" placeholder="Text search, not a regular expression" data-i18n-placeholder="searchPlaceholder" maxlength="512"></label>
+                <div class="filter-actions"><button type="submit" data-i18n="applyFilters">Apply filters</button><button id="show-all" type="button" class="secondary" data-i18n="showAll">Show all</button><button id="reset-filters" type="button" class="secondary" data-i18n="reset">Reset</button></div>
+              </form>
+              <p class="muted compact" data-i18n="filterCaveat">Filters select files; the manual-review filter also selects matches within each file. By default all findings are shown. Review marks are local, do not delete findings and never change scanned files or scanner rules. Newly discovered objects come first. Searching values or context can take longer in large sessions.</p>
+              <div class="saved-filters"><label><span data-i18n="savedView">Saved view</span><select id="saved-select"><option value="" data-i18n="chooseView">Choose a view</option></select></label><button id="load-filter" type="button" class="secondary" data-i18n="apply">Apply</button><label><span data-i18n="viewName">View name</span><input id="saved-name" maxlength="80" placeholder="e.g. High-confidence keys" data-i18n-placeholder="viewPlaceholder"></label><button id="save-filter" type="button" class="secondary" data-i18n="save">Save</button><button id="delete-filter" type="button" class="secondary" data-i18n="deleteView">Delete view</button></div>
+              <p id="saved-notice" class="muted compact" role="status" data-i18n="savedNotice">Only filter settings are saved in this browser, including entered search text. Findings themselves are not saved.</p>
+          </div>
+          <div id="coverage-controls" hidden>
+            <form id="coverage-filters" class="coverage-filters">
+              <label><span data-i18n="objectType">Object type</span><select name="kind"><option value="file" data-i18n="files">Files</option><option value="directory" data-i18n="directories">Directories</option><option value="share" data-i18n="shares">Shares</option><option value="target" data-i18n="hosts">Hosts</option><option value="" data-i18n="allTypes">All types</option></select></label>
+              <label><span data-i18n="status">Status</span><select name="status"><option value="" data-i18n="any">Any</option><option value="error" data-i18n="status.error">error</option><option value="skipped" data-i18n="status.skipped">skipped</option><option value="pending" data-i18n="status.pending">pending</option><option value="in_progress" data-i18n="status.in_progress">in_progress</option><option value="processed" data-i18n="status.processed">processed</option></select></label>
+              <label><span data-i18n="analysisStatus">Content analysis</span><select name="analysis_status"><option value="" data-i18n="any">Any</option><option value="analyzed" data-i18n="analysis.analyzed">Analyzed</option><option value="partial" data-i18n="analysis.partial">Partial</option><option value="not_analyzed" data-i18n="analysis.not_analyzed">Not analyzed</option><option value="unknown" data-i18n="analysis.unknown">Unknown</option></select></label>
+              <label class="grow"><span data-i18n="pathContains">Path contains</span><input name="q" maxlength="512"></label><button type="submit" data-i18n="apply">Apply</button>
+            </form>
+            <details class="coverage-reasons"><summary data-i18n="reasonsTitle">Skip reasons, errors and exclusions</summary><div id="reasons"></div></details>
+          </div>
+          <div class="result-toolbar"><p id="result-count" class="muted" role="status"></p><button id="new-results" type="button" hidden data-i18n="newResults">New changes — refresh results</button><button id="refresh-results" type="button" class="secondary" data-i18n="refreshResults">Refresh results</button></div>
+          <p id="review-notice" class="notice compact" role="status" hidden></p>
+          <div id="results" aria-live="off"></div>
+          <div class="pagination"><button id="previous-page" type="button" class="secondary" disabled data-i18n="previous">← Previous</button><span id="page-number" data-i18n="firstPage">Page 1</span><button id="next-page" type="button" class="secondary" disabled data-i18n="next">Next →</button></div>
+        </section>
+        <p class="footer-note" data-i18n="footer">Values are shown without masking. Do not publish screenshots containing confidential data. Live updates pause while this tab is hidden.</p>
+    </div>
+  </main>
+</body>
+</html>

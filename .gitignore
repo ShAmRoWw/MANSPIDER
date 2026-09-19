@@ -1,0 +1,70 @@
+# Publication allowlist: new root-level material stays local until reviewed.
+# Ignoring never untracks an already committed file.
+/*
+!/.gitignore
+!/.dockerignore
+!/LICENSE
+!/README.md
+!/pyproject.toml
+!/uv.lock
+!/install.sh
+!/manspider.sh
+!/Dockerfile
+!/CHANGES_FROM_ORIGINAL_MANSPIDER_EN.md
+!/man_spider/
+!/tests/
+
+# testdata/, tools/ and extended documentation are intentionally local-only.
+# Keep them on disk; the root allowlist above excludes them from publication.
+
+# Credentials and local configuration, including accidental nested copies.
+stand.txt
+.env
+.env.*
+*.ccache
+*.keytab
+.idea/
+.vscode/
+
+# Python, build, test and editor artifacts.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+.coverage
+.coverage.*
+htmlcov/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Scan output and database sidecars must never be published.
+.manspider/
+.manspider-container-home/
+logs/
+loot/
+*.log
+*.sqlite
+*.sqlite-*
+*.sqlite.*
+*.sqlite3
+*.sqlite3-*
+*.sqlite3.*
+*.db
+*.db-*
+*.review
+*.review-*
+*.review.*
+*.smb-metrics.json
+*.unclassified-files.jsonl
+
+# Private corpora, measurements and seed archives remain on this host.
+benchmark-corpus/
+benchmark-artifacts/
+*.benchmark-seed.zip
